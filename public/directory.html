@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="ar" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>دليل السناتر والمدرسين — SENTER</title>
+<style>
+*{box-sizing:border-box}body{margin:0;font-family:Tahoma,Arial,sans-serif;background:#f3f6fa;color:#222}
+header{background:#1f4e79;color:#fff;padding:16px 20px}header h1{margin:0;font-size:20px}
+main{max-width:900px;margin:0 auto;padding:16px}
+input,select,textarea,button{font:inherit;padding:8px;border:1px solid #bbb;border-radius:6px;width:100%}
+button{width:auto;cursor:pointer;background:#2e75b6;color:#fff;border:0;padding:8px 16px}button.s{background:#6b7c8f}
+.card{background:#fff;padding:14px;border-radius:8px;margin:10px 0;box-shadow:0 1px 4px #0001}.row{display:flex;gap:8px;flex-wrap:wrap;align-items:end}.row>*{flex:1;min-width:140px}
+label{font-size:13px;color:#555;display:block;margin-bottom:3px}.err{color:#c0392b;margin:8px 0}.ok{color:#1e8449;margin:8px 0}.muted{color:#666;font-size:13px}
+.tag{display:inline-block;background:#e8eef5;border-radius:12px;padding:2px 10px;margin:2px;font-size:13px}.star{color:#e6a700}
+a.lk{color:#2e75b6;cursor:pointer;text-decoration:underline}.hp{position:absolute;right:-9999px}
+</style></head><body>
+<header><h1>دليل السناتر والمدرسين</h1></header>
+<main id="m"></main>
+<script>
+const WD=['الأحد','الإثنين','الثلاثاء','الأربعاء','الخميس','الجمعة','السبت'];
+const m=document.getElementById('m');
+// كل النصوص القادمة من الخادم تُدرج عبر textContent أو esc فقط
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>'&#'+c.charCodeAt(0)+';');
+const stars=n=>'★'.repeat(Math.round(n||0))+'☆'.repeat(5-Math.round(n||0));
+const rate=o=>o.rating_count?`<span class="star">${stars(o.rating_avg)}</span> ${o.rating_avg} (${o.rating_count})`:'<span class="muted">لا تقييمات بعد</span>';
+const V=id=>document.getElementById(id).value;
+async function api(p,method='GET',b){const r=await fetch('/api/public/'+p,{method,headers:{'Content-Type':'application/json'},body:b?JSON.stringify(b):undefined});const j=await r.json();if(!r.ok)throw new Error(j.error);return j}
+async function home(){
+  m.innerHTML=`<div class="card"><div class="row"><div><label>المنطقة</label><input id="qa"></div><div><label>المرحلة</label><input id="qg" placeholder="مثال: ثالثة ثانوي"></div><div><label>المادة</label><input id="qs"></div><div><label>اسم السنتر</label><input id="qq"></div><button onclick="search()">بحث</button></div></div>
+  <div class="card"><b>تتبّع طلب حجز</b><div class="row"><input id="tc" placeholder="كود الطلب"><button class="s" onclick="track()">متابعة</button></div><div id="tr"></div></div><div id="res"></div>`;
+  search();
+}
+async function search(){
+  const p=new URLSearchParams();for(const [k,id] of [['area','qa'],['grade','qg'],['subject','qs'],['q','qq']]){const v=document.getElementById(id)?.value;if(v)p.set(k,v)}
+  const res=document.getElementById('res');
+  try{const cs=await api('centers?'+p);res.innerHTML=cs.map(c=>`<div class="card"><h3><a class="lk" onclick="center(${c.id})">${esc(c.name)}</a></h3><div class="muted">${esc(c.area||'')} ${esc(c.city||'')}</div><p>${esc(c.description||'')}</p>${rate(c)}</div>`).join('')||'<div class="card">لا توجد نتائج</div>'}
+  catch(e){res.innerHTML=`<div class="err">${esc(e.message)}</div>`}
+}
+async function track(){try{CODE=V('tc').trim();const j=await api('bookings/'+encodeURIComponent(V('tc').trim()));const S={pending:'معلّق — بانتظار تأكيد السنتر',waitlist:'في قائمة الانتظار',confirmed:'تم تأكيد الحجز',rejected:'تم رفض الطلب',cancelled:'ملغي'};
+  document.getElementById('tr').innerHTML=`<p class="ok">${esc(j.center_name)} — ${esc(j.group_name)}: ${S[j.status]}${j.waitlist_position?' (رقمك '+j.waitlist_position+')':''}</p>${['pending','waitlist'].includes(j.status)?`<button class="s" onclick="cancelB()">إلغاء الطلب</button>`:''}`}catch(e){document.getElementById('tr').innerHTML=`<p class="err">${esc(e.message)}</p>`}}
+async function cancelB(){if(confirm('إلغاء الطلب؟')){try{await api('bookings/'+encodeURIComponent(CODE)+'/cancel','POST',{});track()}catch(e){alert(e.message)}}}
+async function center(id){
+  const c=await api('centers/'+id);
+  m.innerHTML=`<a class="lk" onclick="home()">← رجوع للبحث</a><div class="card"><h2>${esc(c.name)}</h2><div class="muted">${esc(c.area||'')} ${esc(c.city||'')} ${c.contact_phone?' — '+esc(c.contact_phone):''}</div><p>${esc(c.description||'')}</p>${rate(c)}
+  ${c.branches.length?`<p class="muted">الفروع: ${c.branches.map(b=>esc(b.name)+(b.address?' ('+esc(b.address)+')':'')).join(' | ')}</p>`:''}</div>
+  <h3>المدرسون</h3>${c.teachers.map(t=>`<div class="card"><b><a class="lk" onclick="teacher(${t.id})">${esc(t.name)}</a></b> <span class="tag">${esc(t.subject||'')}</span><p>${esc(t.bio||'')}</p>${rate(t)}</div>`).join('')||'<div class="card muted">لا يوجد</div>'}
+  <h3>المجموعات المتاحة للحجز</h3>${groups(c.groups)}
+  <h3>استفسار</h3><div class="card"><div class="row"><div><label>الاسم</label><input id="in"></div><div><label>الهاتف</label><input id="ip"></div></div><label>رسالتك</label><textarea id="im" rows="2" maxlength="500"></textarea><input class="hp" id="iw" tabindex="-1" autocomplete="off"><div id="ie"></div><button onclick="inquire(${c.id})">إرسال</button></div>
+  <h3>تقييمات</h3>${revs(c.reviews)}`;
+}
+let GS=[],CODE='';
+function groups(gs){GS=gs;return gs.map(g=>`<div class="card"><b>${esc(g.name)}</b> <span class="tag">${esc(g.subject||'')}</span><span class="tag">${esc(g.grade||'')}</span>${g.teacher_name?`<span class="tag">${esc(g.teacher_name)}</span>`:''}
+  <p class="muted">${g.schedule.map(s=>WD[s.weekday]+' '+esc(s.start_time)+'–'+esc(s.end_time)).join(' | ')||'المواعيد تُحدَّد لاحقاً'} — السعر: ${g.price!=null?esc(g.price)+' جنيه':'يُحدَّد لاحقاً'}</p>
+  <p>${g.seats_free>0?`<span class="ok">متاح ${g.seats_free} مقعد</span>`:'<span class="err">مكتملة — يمكنك الانضمام لقائمة الانتظار</span>'}</p><button onclick="bookForm(${g.id})">${g.seats_free>0?'احجز':'انضم لقائمة الانتظار'}</button></div>`).join('')||'<div class="card muted">لا توجد مجموعات متاحة حالياً</div>'}
+function revs(r){return r.map(x=>`<div class="card"><span class="star">${stars(x.rating)}</span> <span class="muted">${esc(x.date)}</span><p>${esc(x.comment||'')}</p></div>`).join('')||'<div class="card muted">لا توجد تقييمات منشورة</div>'}
+async function teacher(id){
+  const t=await api('teachers/'+id);
+  m.innerHTML=`<a class="lk" onclick="center(${t.center.id})">← ${esc(t.center.name)}</a><div class="card"><h2>${esc(t.name)}</h2><span class="tag">${esc(t.subject||'')}</span><p>${esc(t.bio||'')}</p>${rate(t)}</div><h3>المجموعات</h3>${groups(t.groups)}<h3>تقييمات</h3>${revs(t.reviews)}`;
+}
+function bookForm(gid){const name=(GS.find(g=>g.id==gid)||{}).name||'';
+  m.insertAdjacentHTML('afterbegin',`<div class="card" id="bf"><h3>حجز: ${esc(name)}</h3><div class="row"><div><label>اسم الطالب</label><input id="bn"></div><div><label>هاتف الطالب أو ولي الأمر</label><input id="bp"></div><div><label>اسم ولي الأمر</label><input id="bpn"></div><div><label>الصف</label><input id="bgr"></div></div>
+  <input class="hp" id="bw" tabindex="-1" autocomplete="off"><div id="be"></div><button onclick="book(${gid})">إرسال الطلب</button> <button class="s" onclick="document.getElementById('bf').remove()">إغلاق</button></div>`);window.scrollTo(0,0);
+}
+async function book(gid){const be=document.getElementById('be');try{const j=await api('bookings','POST',{group_id:gid,name:V('bn'),phone:V('bp'),parent_name:V('bpn'),grade:V('bgr'),website:V('bw')});
+  be.innerHTML=`<p class="ok">${j.status=='waitlist'?'أُضيف طلبك لقائمة الانتظار (رقمك '+j.waitlist_position+')':'تم استلام طلبك وسيتواصل معك السنتر للتأكيد'}.<br>احتفظ بكود المتابعة: <b>${esc(j.code)}</b></p>`}catch(e){be.innerHTML=`<p class="err">${esc(e.message)}</p>`}}
+async function inquire(cid){const ie=document.getElementById('ie');try{await api('inquiries','POST',{center_id:cid,name:V('in'),phone:V('ip'),message:V('im'),website:V('iw')});ie.innerHTML='<p class="ok">تم الإرسال، سيتواصل معك السنتر</p>'}catch(e){ie.innerHTML=`<p class="err">${esc(e.message)}</p>`}}
+home();
+</script></body></html>

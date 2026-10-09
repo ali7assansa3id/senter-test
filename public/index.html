@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="ar" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SENTER — سنتر</title>
+<style>
+*{box-sizing:border-box}body{margin:0;font-family:Tahoma,Arial,sans-serif;background:#f3f6fa;color:#222}
+#login{max-width:340px;margin:12vh auto;background:#fff;padding:24px;border-radius:10px;box-shadow:0 2px 10px #0002}
+#app{display:none;min-height:100vh}aside{width:200px;background:#1f4e79;color:#fff;position:fixed;top:0;bottom:0;right:0;padding:12px;overflow:auto}
+aside h2{margin:4px 0 12px}aside a{display:block;color:#fff;padding:9px 10px;border-radius:6px;cursor:pointer;text-decoration:none}aside a.on,aside a:hover{background:#2e75b6}
+main{margin-right:200px;padding:18px}
+@media(max-width:700px){aside{position:static;width:auto}main{margin:0}}
+input,select,textarea,button{font:inherit;padding:7px;border:1px solid #bbb;border-radius:6px;width:100%}
+button{width:auto;cursor:pointer;background:#2e75b6;color:#fff;border:0;padding:7px 14px}button.s{background:#6b7c8f}button.d{background:#c0392b}
+table{width:100%;border-collapse:collapse;background:#fff;border-radius:8px;overflow:hidden}th,td{padding:8px;border-bottom:1px solid #e5e9ef;text-align:right}th{background:#e8eef5}
+.card{background:#fff;padding:14px;border-radius:8px;margin:10px 0}.row{display:flex;gap:8px;flex-wrap:wrap;align-items:end}.row>*{flex:1;min-width:140px}
+label{font-size:13px;color:#555;display:block;margin-bottom:3px}.err{color:#c0392b;margin:8px 0}.ok{color:#1e8449}.bar{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
+</style></head><body>
+<div id="login"><h2>SENTER — سنتر</h2><label>رقم الهاتف</label><input id="lp" value="01000000000"><label>كلمة المرور</label><input id="lw" type="password">
+<div class="err" id="le"></div><button onclick="login()">دخول</button></div>
+<div id="app"><aside><h2>سنتر</h2><div id="nav"></div><a onclick="logout()">خروج</a></aside><main id="main"></main></div>
+<script src="finance.js"></script>
+<script src="portal.js"></script>
+<script src="content.js"></script>
+<script src="directory.js"></script>
+<script src="ai.js"></script>
+<script src="analytics.js"></script>
+<script src="admin.js"></script>
+<script>
+const WD=['الأحد','الإثنين','الثلاثاء','الأربعاء','الخميس','الجمعة','السبت'];
+const ROLES={owner:'مالك',manager:'مدير',employee:'موظف',teacher:'مدرس',student:'طالب',parent:'ولي أمر'};
+const ST={present:'حاضر',absent:'غائب',late:'متأخر',excused:'بعذر'};
+const R={ // [field,label,type,ref/options]
+ students:{t:'الطلاب',f:[['name','الاسم','text'],['phone','الهاتف','text'],['parent_name','ولي الأمر','text'],['parent_phone','هاتف ولي الأمر','text'],['grade','الصف','text'],['branch_id','الفرع','ref','branches'],['notes','ملاحظات','text']],w:['owner','manager','employee']},
+ teachers:{t:'المدرسون',f:[['name','الاسم','text'],['phone','الهاتف','text'],['subject','المادة','text'],['user_id','حساب الدخول','ref','users'],['pay_type','نظام المحاسبة','enumk',{percentage:'نسبة %',fixed:'مبلغ شهري'}],['pay_value','القيمة','number'],['listed','ظاهر في الدليل العام','enumk',{0:'لا',1:'نعم'}],['bio','نبذة للدليل','text']],w:['owner','manager']},
+ groups:{t:'المجموعات',f:[['name','الاسم','text'],['teacher_id','المدرس','ref','teachers'],['branch_id','الفرع','ref','branches'],['subject','المادة','text'],['grade','الصف','text'],['capacity','السعة','number'],['bookable','متاح للحجز الإلكتروني','enumk',{0:'لا',1:'نعم'}],['price','سعر الشهر (للدليل)','number']],w:['owner','manager']},
+ schedules:{t:'الجداول',f:[['group_id','المجموعة','ref','groups'],['room_id','القاعة','ref','rooms'],['weekday','اليوم','enum',WD],['start_time','من','time'],['end_time','إلى','time']],w:['owner','manager']},
+ sessions:{t:'الحصص',f:[['group_id','المجموعة','ref','groups'],['room_id','القاعة','ref','rooms'],['session_date','التاريخ','date'],['start_time','من','time'],['end_time','إلى','time']],w:['owner','manager','employee']},
+ branches:{t:'الفروع',f:[['name','الاسم','text'],['address','العنوان','text'],['phone','الهاتف','text']],w:['owner','manager']},
+ rooms:{t:'القاعات',f:[['branch_id','الفرع','ref','branches'],['name','الاسم','text'],['capacity','السعة','number']],w:['owner','manager']},
+ users:{t:'المستخدمون',f:[['name','الاسم','text'],['phone','الهاتف','text'],['role','الدور','enumk',ROLES],['branch_id','الفرع','ref','branches'],['password','كلمة المرور','password']],w:['owner'],r:['owner','manager']},
+};
+let tok=localStorage.tok,me=null,cache={};
+const ja=o=>JSON.stringify(o).replace(/[&<>"']/g,c=>'&#'+c.charCodeAt(0)+';');
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+async function api(p,m='GET',b){const r=await fetch('/api/'+p,{method:m,headers:{'Content-Type':'application/json',Authorization:'Bearer '+tok},body:b?JSON.stringify(b):undefined});
+ const j=await r.json();if(!r.ok){if(r.status==401&&p!='login')logout();throw new Error(j.error)}return j}
+async function login(){try{const j=await api('login','POST',{phone:lp.value,password:lw.value});tok=j.token;localStorage.tok=tok;start()}catch(e){le.textContent=e.message}}
+function logout(){localStorage.removeItem('tok');location.reload()}
+async function start(){try{me=await api('me')}catch{return}
+ login_.style&&0;document.getElementById('login').style.display='none';app.style.display='block';
+ const staff=['owner','manager','employee','teacher'].includes(me.role),pg=Object.keys(PAGES).filter(k=>PAGES[k].roles.includes(me.role));
+ const items=staff?[...Object.keys(R).filter(k=>!R[k].r||R[k].r.includes(me.role)),'attendance',...pg]:pg;
+ nav.innerHTML=items.map(k=>`<a id="n_${k}" onclick="go('${k}')">${k=='attendance'?'الحضور والغياب':R[k]?R[k].t:PAGES[k].title}</a>`).join('');go(items[0]);window.afterNav&&afterNav()}
+const login_={};
+async function go(k){clearInterval(window._ti1);clearInterval(window._ti2);document.querySelectorAll('aside a').forEach(a=>a.classList.remove('on'));document.getElementById('n_'+k)?.classList.add('on');
+ try{PAGES[k]?await PAGES[k]():k=='attendance'?await attPage():await resPage(k)}catch(e){main.innerHTML=`<div class="err">${esc(e.message)}</div>`}}
+async function lookup(ref){return cache[ref]=await api(ref)}
+function show(v,[f,l,t,x],c){if(v==null)return'';if(t=='ref')return esc((c[x]||[]).find(o=>o.id==v)?.name||(c[x]||[]).find(o=>o.id==v)?.session_date||v);if(t=='enum')return WD[v];if(t=='enumk')return (x&&x[v])||v;return esc(v)}
+async function resPage(k){const d=R[k],canW=d.w.includes(me.role);const refs=[...new Set(d.f.filter(x=>x[2]=='ref').map(x=>x[3]))];
+ const c={};for(const r of refs){try{c[r]=await api(r)}catch{c[r]=[]}}cache=c;const rows=await api(k);
+ const cols=d.f.filter(x=>x[2]!='password');
+ main.innerHTML=`<div class="bar"><h2>${d.t}</h2>${canW?`<button onclick="form('${k}')">+ إضافة</button>`:''}</div><div id="fm"></div>
+ <table><tr>${cols.map(x=>`<th>${x[1]}</th>`).join('')}<th></th></tr>${rows.map(r=>`<tr>${cols.map(x=>`<td>${show(r[x[0]],x,c)}</td>`).join('')}<td>
+ ${k=='groups'?`<button class="s" onclick="members(${r.id})">الطلاب</button> `:''}${k=='groups'&&canW?`<button class="s" onclick="gen(${r.id})">توليد الحصص</button> `:''}
+ ${canW?`<button class="s" onclick="form('${k}',${ja(r)})">تعديل</button> <button class="d" onclick="del('${k}',${r.id})">حذف</button>`:''}</td></tr>`).join('')}</table>`;window._rows=rows}
+function form(k,r={}){const d=R[k];fm.innerHTML=`<div class="card"><div class="row">${d.f.map(([f,l,t,x])=>{
+ let i;if(t=='ref')i=`<select id="f_${f}"><option value="">—</option>${(cache[x]||[]).map(o=>`<option value="${o.id}" ${o.id==r[f]?'selected':''}>${esc(o.name||o.session_date)}</option>`).join('')}</select>`;
+ else if(t=='enum')i=`<select id="f_${f}">${x.map((n,j)=>`<option value="${j}" ${j==r[f]?'selected':''}>${n}</option>`).join('')}</select>`;
+ else if(t=='enumk')i=`<select id="f_${f}">${Object.entries(x).map(([a,n])=>`<option value="${a}" ${a==r[f]?'selected':''}>${n}</option>`).join('')}</select>`;
+ else i=`<input id="f_${f}" type="${t=='number'?'number':t=='password'?'password':t=='time'?'time':t=='date'?'date':'text'}" value="${esc(t=='password'?'':r[f]??'')}">`;
+ return`<div><label>${l}</label>${i}</div>`}).join('')}</div><div class="err" id="fe"></div><button onclick="save('${k}',${r.id||0})">حفظ</button> <button class="s" onclick="fm.innerHTML=''">إلغاء</button></div>`}
+async function save(k,id){const b={};for(const [f,l,t] of R[k].f){let v=document.getElementById('f_'+f).value;if(v==='')v=null;else if(t=='number'||t=='enum'||t=='ref')v=Number(v);if(!(t=='password'&&v==null&&id))b[f]=v}
+ try{id?await api(k+'/'+id,'PUT',b):await api(k,'POST',b);resPage(k)}catch(e){fe.textContent=e.message}}
+async function del(k,id){if(confirm('تأكيد الحذف؟'))try{await api(k+'/'+id,'DELETE');resPage(k)}catch(e){alert(e.message)}}
+async function members(gid){const [ms,all]=await Promise.all([api(`groups/${gid}/students`),api('students')]);const can=['owner','manager','employee'].includes(me.role);
+ fm.innerHTML=`<div class="card"><h3>طلاب المجموعة (${ms.length})</h3>${ms.map(s=>`<div>${esc(s.name)} ${can?`<button class="d" onclick="unen(${gid},${s.id})">إزالة</button>`:''}</div>`).join('')||'لا يوجد'}
+ ${can?`<div class="row" style="margin-top:10px"><select id="ns">${all.filter(s=>!ms.some(m=>m.id==s.id)).map(s=>`<option value="${s.id}">${esc(s.name)}</option>`).join('')}</select><button onclick="enr(${gid})">تسجيل طالب</button></div>`:''}
+ <div class="err" id="fe"></div></div>`;window.scrollTo(0,0)}
+async function enr(g){try{await api(`groups/${g}/students`,'POST',{student_id:+ns.value});members(g)}catch(e){fe.textContent=e.message}}
+async function unen(g,s){await api(`groups/${g}/students/${s}`,'DELETE');members(g)}
+async function gen(g){const from=prompt('من تاريخ (YYYY-MM-DD)');const to=from&&prompt('إلى تاريخ (YYYY-MM-DD)');if(!to)return;
+ try{const r=await api(`groups/${g}/generate-sessions`,'POST',{from,to});alert(`تم إنشاء ${r.created} حصة، وتخطي ${r.skipped.length}`+r.skipped.map(s=>`\n${s.date}: ${s.reason}`).join(''))}catch(e){alert(e.message)}}
+async function attPage(){const [ss,gs]=await Promise.all([api('sessions'),api('groups')]);const g=Object.fromEntries(gs.map(x=>[x.id,x.name]));
+ main.innerHTML=`<h2>الحضور والغياب</h2><div class="card"><label>اختر الحصة</label><select id="ss" onchange="loadAtt()"><option value="">—</option>${ss.sort((a,b)=>b.session_date.localeCompare(a.session_date)).map(s=>`<option value="${s.id}">${s.session_date} ${s.start_time} — ${esc(g[s.group_id])}${s.status=='cancelled'?' (ملغاة)':''}</option>`).join('')}</select></div><div id="at"></div>`}
+async function loadAtt(){if(!ss.value){at.innerHTML='';return}const j=await api(`sessions/${ss.value}/attendance`);
+ at.innerHTML=`<div class="card"><table><tr><th>الطالب</th><th>الحالة</th><th>ملاحظة</th></tr>${j.students.map(s=>`<tr data-s="${s.student_id}"><td>${esc(s.name)}</td>
+ <td><select>${Object.entries(ST).map(([a,n])=>`<option value="${a}" ${(s.status||'present')==a?'selected':''}>${n}</option>`).join('')}</select></td><td><input value="${esc(s.note||'')}"></td></tr>`).join('')}</table>
+ <div class="err" id="ae"></div><button onclick="saveAtt()">حفظ الحضور</button></div>`}
+async function saveAtt(){const records=[...at.querySelectorAll('tr[data-s]')].map(r=>({student_id:+r.dataset.s,status:r.querySelector('select').value,note:r.querySelector('input').value||null}));
+ try{await api(`sessions/${ss.value}/attendance`,'PUT',{records});ae.className='ok';ae.textContent='تم الحفظ'}catch(e){ae.className='err';ae.textContent=e.message}}
+if(tok)start();
+</script></body></html>
