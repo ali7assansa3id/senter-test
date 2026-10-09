@@ -1,0 +1,9 @@
+node_modules/
+uploads/
+.secret
+*.db
+*.db-wal
+*.db-shm
+*.db*
+backups/
+.env

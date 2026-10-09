@@ -1,0 +1,13 @@
+{
+  "name": "senter",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "start": "node --no-warnings src/server.js",
+    "test": "for f in tests/*.test.js; do node --no-warnings $f || exit 1; done",
+    "backup": "node --no-warnings scripts/backup.js"
+  },
+  "engines": {
+    "node": ">=22.5"
+  }
+}

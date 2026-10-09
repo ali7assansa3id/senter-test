@@ -1,0 +1,10 @@
+node_modules
+.secret
+*.db
+*.db-*
+uploads
+backups
+tests
+docs
+.env
+.git
